@@ -6,7 +6,9 @@ import numpy as np
 from datetime import date
 
 
-# TODO: figure out window resizing stuff (low priority)
+# TODO: 
+# - figure out window resizing stuff (low priority)
+# - there seems to be an offset between where the pointer is and where the drawing appears in the canvas
 
 def apply_mask(image, ranges):
     lows = (ranges['B']['min'], ranges['G']['min'], ranges['R']['min'])
