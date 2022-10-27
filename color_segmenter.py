@@ -1,8 +1,13 @@
 import cv2
-import numpy as np
 from functools import partial
 import json
 from os import path
+
+"""
+TODO:
+- figure out how to fix the bug from clickling the (x) button to leave the canvas
+- there's some bug where sometimes you press 'w' and it doesn't work (?) (HIGH PRIORITY)
+"""
 
 def update_range_dict(val,ranges,color,bound):
     ranges[color][bound] = val
@@ -37,14 +42,14 @@ def main():
 
     # Trackbars for R, G and B dimensions
 
-    cv2.createTrackbar('R min', window_name , 0, slider_max, partial(update_range_dict, ranges=ranges, color='R', bound='min'))
-    cv2.createTrackbar('R max', window_name , 0, slider_max, partial(update_range_dict, ranges=ranges, color='R', bound='max'))
+    cv2.createTrackbar('R min', window_name , ranges['R']['min'], slider_max, partial(update_range_dict, ranges=ranges, color='R', bound='min'))
+    cv2.createTrackbar('R max', window_name , ranges['R']['max'], slider_max, partial(update_range_dict, ranges=ranges, color='R', bound='max'))
     
-    cv2.createTrackbar('G min', window_name , 0, slider_max, partial(update_range_dict, ranges=ranges, color='G', bound='min'))
-    cv2.createTrackbar('G max', window_name , 0, slider_max, partial(update_range_dict, ranges=ranges, color='G', bound='max'))
+    cv2.createTrackbar('G min', window_name , ranges['G']['min'], slider_max, partial(update_range_dict, ranges=ranges, color='G', bound='min'))
+    cv2.createTrackbar('G max', window_name , ranges['G']['max'], slider_max, partial(update_range_dict, ranges=ranges, color='G', bound='max'))
     
-    cv2.createTrackbar('B min', window_name , 0, slider_max, partial(update_range_dict, ranges=ranges, color='B', bound='min'))
-    cv2.createTrackbar('B max', window_name , 0, slider_max, partial(update_range_dict, ranges=ranges, color='B', bound='max'))
+    cv2.createTrackbar('B min', window_name , ranges['B']['min'], slider_max, partial(update_range_dict, ranges=ranges, color='B', bound='min'))
+    cv2.createTrackbar('B max', window_name , ranges['B']['max'], slider_max, partial(update_range_dict, ranges=ranges, color='B', bound='max'))
 
     while True:
 
@@ -53,10 +58,10 @@ def main():
         alter_image(ranges,frame,window_name)
 
         # Quit
-        if cv2.waitKey(33) == ord('q'):
+        if cv2.waitKey(1) == ord('q'):
             break
         # Write to file
-        elif cv2.waitKey(33) == ord('w'):
+        elif cv2.waitKey(1) == ord('w'):
             write = True
             break
 
