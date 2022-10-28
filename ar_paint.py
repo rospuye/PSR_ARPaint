@@ -3,7 +3,7 @@ import argparse
 from os import path
 import json
 import numpy as np
-from datetime import date
+from datetime import datetime
 
 
 # TODO: 
@@ -151,9 +151,8 @@ def main():
 
         # save image
         elif pressedKey==ord('w'):
-            # TODO: hours/minutes/seconds are at 0s (why?)
-            today = date.today()
-            formatted_date = today.strftime("%A_%b_%d_%H:%M:%S")
+            today = datetime.now()
+            formatted_date = today.strftime("%a_%b_%d_%H:%M:%S")
             image_name = 'drawing_' + formatted_date + '.png'
             cv2.imwrite(image_name, canvas)
 
