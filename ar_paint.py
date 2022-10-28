@@ -36,12 +36,14 @@ def get_centroid(mask):
 
         # calculate centroid
         M = cv2.moments(cnt)
-        cX = int(M["m10"] / M["m00"])
-        cY = int(M["m01"] / M["m00"])
+        cX = int(M["m10"] / M["m00"]) if (M["m00"]!=0) else None
+        cY = int(M["m01"] / M["m00"]) if (M["m00"]!=0) else None
+        print((cX,cY))
 
         # draw the centroid
-        cv2.line(final_image, (cX-8, cY-8), (cX+8, cY+8), (0, 0, 255), 5)
-        cv2.line(final_image, (cX+8, cY-8), (cX-8, cY+8), (0, 0, 255), 5)
+        if cX and cY:
+            cv2.line(final_image, (cX-8, cY-8), (cX+8, cY+8), (0, 0, 255), 5)
+            cv2.line(final_image, (cX+8, cY-8), (cX-8, cY+8), (0, 0, 255), 5)
 
     # if no detected objects, show black canvas
     else:
@@ -53,10 +55,10 @@ def get_centroid(mask):
     return (cX,cY), final_image
 
 def draw(image, old_coords, coords, color, thickness):
-    if not coords[0]:
+    if (not coords[0]) or (not coords[1]):
         return image
     else:
-        if not old_coords[0]:
+        if (not old_coords[0]) or (not old_coords[1]):
             return cv2.circle(image, coords, thickness, color, -1)
         else:
             return cv2.line(image, (old_coords[0], old_coords[1]), (coords[0], coords[1]), color, thickness)
@@ -87,7 +89,7 @@ def main():
     cv2.resizeWindow(camera_window, (600, 800))
 
     # setting up a white canvas
-    canvas = np.zeros([400,600,3],dtype=np.uint8)
+    canvas = np.zeros([600,800,3],dtype=np.uint8)
     canvas[:] = 255
     canvas_window = 'Canvas'
     cv2.namedWindow(canvas_window, cv2.WINDOW_NORMAL)
@@ -120,35 +122,36 @@ def main():
         old_centroid_coords = centroid_coords
 
 
-        # TODO: this is slow... maybe make this a match-case? (HIGH PRIORITY)
+        # wait for a command
+        pressedKey = cv2.waitKey(1) & 0xFF
 
         # 'q' key to quit the program
-        if cv2.waitKey(1) == ord('q'):
+        if pressedKey == ord('q'):
             break
 
         # change pencil color
-        elif cv2.waitKey(1)==ord('r'):
+        elif pressedKey==ord('r'):
             draw_color = (0,0,255)
-        elif cv2.waitKey(1)==ord('g'):
+        elif pressedKey==ord('g'):
             draw_color = (0,255,0)
-        elif cv2.waitKey(1)==ord('b'):
+        elif pressedKey==ord('b'):
             draw_color = (255,0,0)
 
         # change pencil thickness
-        elif cv2.waitKey(1)==ord('-'):
+        elif pressedKey==ord('-'):
             if draw_thickness > 1:
                 draw_thickness -= 4
-        elif cv2.waitKey(1)==ord('+'):
+        elif pressedKey==ord('+'):
             if draw_thickness < 40:
                 draw_thickness += 4
         
         # clear canvas
-        elif cv2.waitKey(1)==ord('c'):
+        elif pressedKey==ord('c'):
             canvas = np.zeros([400,600,3],dtype=np.uint8)
             canvas[:] = 255
 
         # save image
-        elif cv2.waitKey(1)==ord('w'):
+        elif pressedKey==ord('w'):
             # TODO: hours/minutes/seconds are at 0s (why?)
             today = date.today()
             formatted_date = today.strftime("%A_%b_%d_%H:%M:%S")

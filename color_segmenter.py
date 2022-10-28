@@ -6,7 +6,6 @@ from os import path
 """
 TODO:
 - figure out how to fix the bug from clickling the (x) button to leave the canvas
-- there's some bug where sometimes you press 'w' and it doesn't work (?) (HIGH PRIORITY)
 """
 
 def update_range_dict(val,ranges,color,bound):
@@ -23,8 +22,6 @@ def alter_image(ranges, image, window_name):
 
 
 def main():
-
-    write = False
 
     # default values to start with
     fileAlreadyExists = path.exists('limits.json')
@@ -57,20 +54,19 @@ def main():
         _, frame = capture.read()
         alter_image(ranges,frame,window_name)
 
+        # wait for a command
+        pressedKey = cv2.waitKey(1) & 0xFF
+
         # Quit
-        if cv2.waitKey(1) == ord('q'):
+        if pressedKey == ord('q'):
             break
         # Write to file
-        elif cv2.waitKey(1) == ord('w'):
-            write = True
+        elif pressedKey == ord('w'):
+            data = {'limits' : ranges}
+            json_object = json.dumps(data, indent=4)
+            with open("limits.json", "w") as outfile:
+                outfile.write(json_object)
             break
-
-    if write:
-        # write to file
-        data = {'limits' : ranges}
-        json_object = json.dumps(data, indent=4)
-        with open("limits.json", "w") as outfile:
-            outfile.write(json_object)
 
 
 
