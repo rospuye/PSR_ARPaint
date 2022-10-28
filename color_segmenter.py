@@ -33,8 +33,16 @@ def main():
         ranges = { 'B':{'max': 255, 'min': 0}, 'G':{'max': 255, 'min': 0}, 'R':{'max': 255, 'min': 0} }
 
     capture = cv2.VideoCapture(0)
+    _, frame = capture.read()
+
+    scale = 0.55
+    window_width = int(frame.shape[1] * scale)
+    window_height = int(frame.shape[0])
+
     window_name = 'Color segmentation'
-    cv2.namedWindow(window_name,cv2.WINDOW_AUTOSIZE)
+    cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+    cv2.resizeWindow(window_name, window_width, window_height)
+
     slider_max = 255
 
     # Trackbars for R, G and B dimensions

@@ -6,9 +6,6 @@ import numpy as np
 from datetime import datetime
 
 
-# TODO: 
-# - figure out window resizing stuff (low priority)
-
 def apply_mask(image, ranges):
     lows = (ranges['B']['min'], ranges['G']['min'], ranges['R']['min'])
     highs = (ranges['B']['max'], ranges['G']['max'], ranges['R']['max'])
@@ -80,23 +77,37 @@ def main():
     except:
         raise ValueError('The .json file with the color data doesn\'t exist.')
 
+
     # setting up the video capture
     capture = cv2.VideoCapture(0)
+    _, frame = capture.read() # initial frame just to figure out proper window dimensions
+
+    # dimensions for all windows
+    scale = 0.6
+    window_width = int(frame.shape[1] * scale)
+    window_height = int(frame.shape[0] * scale)
+
+    # continuing video capture setup
     camera_window = 'Camera capture'
     cv2.namedWindow(camera_window, cv2.WINDOW_NORMAL)
-    cv2.resizeWindow(camera_window, (600, 800))
+    cv2.resizeWindow(camera_window, (window_width, window_height))
 
     # setting up a white canvas
     canvas = np.zeros([720,1280,3],dtype=np.uint8)
     canvas[:] = 255
     canvas_window = 'Canvas'
     cv2.namedWindow(canvas_window, cv2.WINDOW_NORMAL)
-    cv2.resizeWindow(canvas_window, 600, 800)
+    cv2.resizeWindow(canvas_window, (window_width, window_height))
 
     # setting up the window that shows the mask being applied
     mask_window = 'Masked capture'
     cv2.namedWindow(mask_window, cv2.WINDOW_NORMAL)
-    cv2.resizeWindow(mask_window, 600, 800)
+    cv2.resizeWindow(mask_window, (window_width, window_height))
+
+    # define positions of each window on screen (this way, they don't overlap)
+    cv2.moveWindow(camera_window, 200, 100)
+    cv2.moveWindow(mask_window, 1000, 100)
+    cv2.moveWindow(canvas_window, 600, 580)
 
     # ------------ Continuous Operation ------------
 
