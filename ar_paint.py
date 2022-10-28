@@ -8,7 +8,6 @@ from datetime import date
 
 # TODO: 
 # - figure out window resizing stuff (low priority)
-# - there seems to be an offset between where the pointer is and where the drawing appears in the canvas
 
 def apply_mask(image, ranges):
     lows = (ranges['B']['min'], ranges['G']['min'], ranges['R']['min'])
@@ -38,7 +37,6 @@ def get_centroid(mask):
         M = cv2.moments(cnt)
         cX = int(M["m10"] / M["m00"]) if (M["m00"]!=0) else None
         cY = int(M["m01"] / M["m00"]) if (M["m00"]!=0) else None
-        print((cX,cY))
 
         # draw the centroid
         if cX and cY:
@@ -89,7 +87,7 @@ def main():
     cv2.resizeWindow(camera_window, (600, 800))
 
     # setting up a white canvas
-    canvas = np.zeros([600,800,3],dtype=np.uint8)
+    canvas = np.zeros([720,1280,3],dtype=np.uint8)
     canvas[:] = 255
     canvas_window = 'Canvas'
     cv2.namedWindow(canvas_window, cv2.WINDOW_NORMAL)
@@ -147,8 +145,9 @@ def main():
         
         # clear canvas
         elif pressedKey==ord('c'):
-            canvas = np.zeros([400,600,3],dtype=np.uint8)
+            canvas = np.zeros([720,1280,3],dtype=np.uint8)
             canvas[:] = 255
+            old_centroid_coords = (None,None)
 
         # save image
         elif pressedKey==ord('w'):
