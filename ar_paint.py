@@ -26,6 +26,29 @@ class Mouse:
     def update_coords(self,event,x,y,flags,param):
         self.coords = (x,y)
 
+class Dot:
+    """
+    class 'Dot': represents a drawn dot on the canvas; this class allows us to instantiate dots drawn on
+                the canvas (camera frame) so that they might be redrawn on each new frame
+    """
+
+    def __init__(self, coords, thickness, color):
+        self.coords = coords
+        self.thickness = thickness
+        self.color = color
+
+class Line:
+    """
+    class 'Line': represents a drawn line on the canvas; this class allows us to instantiate lines drawn on
+                the canvas (camera frame) so that they might be redrawn on each new frame
+    """
+
+    def __init__(self, old_coords, coords, thickness, color):
+        self.old_coords = old_coords
+        self.coords = coords
+        self.thickness = thickness
+        self.color = color
+
 def get_centroid_position(mask):
     """
     function 'get_centroid_position': analyses the result of a mask being applied to an image (the result being
@@ -106,48 +129,63 @@ def get_mouse_position(mouse):
     return (cX,cY), final_image
 
 
-def draw(image, old_coords, coords, color, thickness, usp):
+def new_draw_move(old_coords, coords, color, thickness, usp):
     """
-    function draw: draws on the canvas
+    function new_draw_move: returns the class instantiation of a new drawing move performed by
+                            the end-user
         INPUT:
-            - image:      this is our canvas, meaning it is the image we want to draw on
             - old_coords: last position of the pencil
             - coords:     new position of the pencil
             - color:      pencil color
             - thickness:  pencil thickness
+            - usp:        boolean that indicates whether or not we're performing shake prevention
         OUTPUT:
             - [return value]: there are three distinct cases for what the return value could
-                            be, altough in all of them we return an RGB image
+                            be
                             (1) if the new pencil coordinates are (None,None), then we do
-                                not draw on the image, simply return it as it was given
+                                not draw on the image, and thus return None
                             (2) if the new pencil coordinates are DIFFERENT from (None, None)
                                 but we do not have any previous coordinates (meaning that
-                                old_coords is (None,None)), we simply draw a dot on the image
-                                and return it; this scenario also happens if the program is ran with
-                                the shake detection option activated and the difference between
-                                old_coords and coords surpasses a certain threshold
+                                old_coords is (None,None)), we simply return a Dot object; this
+                                scenario also happens if the program is ran with the shake detection
+                                option activated and the difference between old_coords and coords
+                                surpasses a certain threshold
                             (3) if we have both the previous coordinates and the new ones, we
-                                draw a line going from the previous to the new coordinates on
-                                the image and return it
+                                return a Line object going from the previous to the new coordinates
     """
 
-    if coords==(None,None):
-        return image
-    else:
+    if coords!=(None,None):
         # difference along the x and y axes between the pencil's last and current position;
         # if either of these differences is too big and we ran this program with the -usp flag,
         # shake detection will be activated
         diffX = abs(old_coords[0] - coords[0]) if old_coords[0] else None
         diffY = abs(old_coords[1] - coords[1]) if old_coords[1] else None
 
+        # TODO: potentially need to adjust the threshold of the shake detection
         if old_coords==(None,None) or \
             (usp and (diffX>50 or diffY>50)): # this line performs shake detection
-            # TODO: potentially need to adjust the threshold of the shake detection
-            return cv2.circle(image, coords, thickness, color, -1)
+            return Dot(coords,thickness,color)
         else:
-            return cv2.line(image, (old_coords[0], old_coords[1]), (coords[0], coords[1]), color, thickness)
+            return Line(old_coords,coords,thickness,color)
+    return None
 
+def redraw_on_frame(image, draw_moves):
+    """
+    function redraw_on_frame: re-draws all the user's move history on the newly capture camera frame
+        INPUT:
+            - image:      canvas on which to draw (that being the new camera frame)
+            - draw_moves: history of drawing moves performed by the user
+        OUTPUT:
+            - image: altered canvas, already with the drawings on it
+    """
 
+    for move in draw_moves:
+        # draw on image
+        if type(move) is Dot:
+            cv2.circle(image, move.coords, move.thickness, move.color, -1)
+        elif type(move) is Line:
+            cv2.line(image, (move.old_coords[0], move.old_coords[1]), (move.coords[0], move.coords[1]), move.color, move.thickness)
+    return image
 
 def main():
     """
@@ -183,6 +221,8 @@ def main():
     except FileNotFoundError:
         sys.exit('The .json file with the color data doesn\'t exist.')
 
+    # list of all the draw moves done so far
+    draw_moves = []
 
     # setting up the video capture
     capture = cv2.VideoCapture(0)
@@ -198,13 +238,6 @@ def main():
     cv2.namedWindow(camera_window, cv2.WINDOW_NORMAL)
     cv2.resizeWindow(camera_window, (window_width, window_height))
 
-    # setting up a white canvas
-    canvas = np.zeros([720,1280,3],dtype=np.uint8)
-    canvas[:] = 255
-    canvas_window = 'Canvas'
-    cv2.namedWindow(canvas_window, cv2.WINDOW_NORMAL)
-    cv2.resizeWindow(canvas_window, (window_width, window_height))
-
     # setting up the window that shows the mask being applied
     mask_window = 'Masked capture'
     cv2.namedWindow(mask_window, cv2.WINDOW_NORMAL)
@@ -213,7 +246,6 @@ def main():
     # define positions of each window on screen (this way, they don't overlap)
     cv2.moveWindow(camera_window, 200, 100)
     cv2.moveWindow(mask_window, 1000, 100)
-    cv2.moveWindow(canvas_window, 600, 580)
 
     # if we're going to use mouse coordinates in place of the centroid, we need to
     # keep track of the mouse
@@ -234,18 +266,18 @@ def main():
         _, frame = capture.read()
         mask = apply_mask(frame, ranges)
 
-        # show camera and canvas
-        cv2.imshow(camera_window, frame)
-        cv2.imshow(canvas_window, canvas)
 
         # calculate centroid of the largest color blob and show the mask being applied
         pencil_coords, detected_pencil = get_centroid_position(mask) if not use_mouse else get_mouse_position(mouse)
         cv2.imshow(mask_window, detected_pencil)
 
-        # update the canvas and the pencil coordinates according to the most recent drawing movement
-        canvas = draw(canvas, old_pencil_coords, pencil_coords, draw_color, draw_thickness, usp)
+        # update the frame and the pencil coordinates according to the most recent drawing movement
+        draw_moves.append(new_draw_move(old_pencil_coords, pencil_coords, draw_color, draw_thickness, usp))
+        frame = redraw_on_frame(frame,draw_moves)
         old_pencil_coords = pencil_coords
 
+        # show frame
+        cv2.imshow(camera_window, frame)
 
         # wait for a command
         pressedKey = cv2.waitKey(1) & 0xFF
@@ -272,8 +304,7 @@ def main():
         
         # clear canvas
         elif pressedKey==ord('c'):
-            canvas = np.zeros([720,1280,3],dtype=np.uint8)
-            canvas[:] = 255
+            draw_moves = []
             old_pencil_coords = (None,None)
 
         # save image
@@ -281,7 +312,7 @@ def main():
             today = datetime.now()
             formatted_date = today.strftime("%a_%b_%d_%H:%M:%S")
             image_name = 'drawing_' + formatted_date + '.png'
-            cv2.imwrite(image_name, canvas)
+            cv2.imwrite(image_name, frame)
 
 
 
