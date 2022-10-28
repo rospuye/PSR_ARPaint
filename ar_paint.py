@@ -3,6 +3,7 @@ import numpy as np
 
 import argparse
 import json
+from functools import partial
 
 from os import path
 import sys
@@ -11,11 +12,25 @@ from datetime import datetime
 from color_segmenter import apply_mask
 
 
-def get_centroid(mask):
+class Mouse:
     """
-    function 'get_centroid': analyses the result of a mask being applied to an image (the result being
+    class 'Mouse': this class is only ever instantiated if we run the program with the -m flag, meaning
+                we wish to use the mouse pointer instead of the color centroid as a pencil; in that case,
+                the instantiation of Mouse keeps track of the coordinates of the mouse pointer, thus
+                avoiding the use of global variables
+    """
+
+    def __init__(self):
+        self.coords = (None,None)
+
+    def update_coords(self,event,x,y,flags,param):
+        self.coords = (x,y)
+
+def get_centroid_position(mask):
+    """
+    function 'get_centroid_position': analyses the result of a mask being applied to an image (the result being
                             a binary image) in order to find its largest color segment, as well as its
-                            centroid 
+                            centroid
         INPUT:
             - mask: an image where a color segmentation mask has been applied; it is a BINARY
                     image where the white pixels represent that a given color has been detected
@@ -56,7 +71,7 @@ def get_centroid(mask):
         cY = int(M["m01"] / M["m00"]) if (M["m00"]!=0) else None
 
         # draw small red cross to indicate the centroid point
-        if cX and cY:
+        if cX: # it's enough to check either cX or cY, if one is None then both are None
             cv2.line(final_image, (cX-8, cY-8), (cX+8, cY+8), (0, 0, 255), 5)
             cv2.line(final_image, (cX+8, cY-8), (cX-8, cY+8), (0, 0, 255), 5)
 
@@ -65,11 +80,33 @@ def get_centroid(mask):
         final_image = cv2.merge((mask, mask, mask))
         cX = None
         cY = None
-    
+        
+    return (cX,cY), final_image
+
+def get_mouse_position(mouse):
+    """
+    function 'get_mouse_position': if we are running the script with the -m flag, it returns the mouse
+                                coordinates on a black screen
+        INPUT:
+            - mouse: the instantiation of the Mouse class, which keeps the mouse pointer coordinate
+                    information
+        OUTPUT:
+            - (cX, cY): the X and Y coordinates (respectively) of the mouse pointer
+            - final_image: a black screen where a red cross is placed in the position of the mouse
+                        coordinates
+    """
+
+    final_image = np.zeros([720,1280,3],dtype=np.uint8) # black screen
+    cX = mouse.coords[0]
+    cY = mouse.coords[1]
+    # drawing the red cross
+    if cX:
+        cv2.line(final_image, (cX-8, cY-8), (cX+8, cY+8), (0, 0, 255), 5)
+        cv2.line(final_image, (cX+8, cY-8), (cX-8, cY+8), (0, 0, 255), 5)
     return (cX,cY), final_image
 
 
-def draw(image, old_coords, coords, color, thickness):
+def draw(image, old_coords, coords, color, thickness, usp):
     """
     function draw: draws on the canvas
         INPUT:
@@ -86,19 +123,30 @@ def draw(image, old_coords, coords, color, thickness):
                             (2) if the new pencil coordinates are DIFFERENT from (None, None)
                                 but we do not have any previous coordinates (meaning that
                                 old_coords is (None,None)), we simply draw a dot on the image
-                                and return it
+                                and return it; this scenario also happens if the program is ran with
+                                the shake detection option activated and the difference between
+                                old_coords and coords surpasses a certain threshold
                             (3) if we have both the previous coordinates and the new ones, we
                                 draw a line going from the previous to the new coordinates on
                                 the image and return it
     """
 
-    if (not coords[0]) or (not coords[1]):
+    if coords==(None,None):
         return image
     else:
-        if (not old_coords[0]) or (not old_coords[1]):
+        # difference along the x and y axes between the pencil's last and current position;
+        # if either of these differences is too big and we ran this program with the -usp flag,
+        # shake detection will be activated
+        diffX = abs(old_coords[0] - coords[0]) if old_coords[0] else None
+        diffY = abs(old_coords[1] - coords[1]) if old_coords[1] else None
+
+        if old_coords==(None,None) or \
+            (usp and (diffX>50 or diffY>50)): # this line performs shake detection
+            # TODO: potentially need to adjust the threshold of the shake detection
             return cv2.circle(image, coords, thickness, color, -1)
         else:
             return cv2.line(image, (old_coords[0], old_coords[1]), (coords[0], coords[1]), color, thickness)
+
 
 
 def main():
@@ -112,11 +160,19 @@ def main():
 
     # processing command line arguments
     parser = argparse.ArgumentParser(description='PSR AR Paint')
-    parser.add_argument('-j', '--json', type=str, required=False, help='Use this argument to provide the path to the .json file with the color data.')
+    parser.add_argument('-j', '--json', type=str, required=False, help='provide the path to the .json file with the color data')
+    parser.add_argument('-usp', '--use_shake_prevention', action='store_true', help='use shake prevention while drawing')
+    parser.add_argument('-m', '--mouse', action='store_true', help='test the program with the mouse pointer instead of the color centroid')
     args = vars(parser.parse_args())
+
     # if a path to a .json file is not provided, we assume it's the
     # limits.json file resulting from the execution of color_segmenter.py
     json_path = 'limits.json' if not args['json'] else args['json']
+
+    # boolean that determines if shake prevention is to be used or not
+    usp = args['use_shake_prevention']
+    # boolean that determines if the mouse pointer is to be used or not
+    use_mouse = args['mouse']
 
     # reading color information from .json file
     try:
@@ -159,12 +215,18 @@ def main():
     cv2.moveWindow(mask_window, 1000, 100)
     cv2.moveWindow(canvas_window, 600, 580)
 
+    # if we're going to use mouse coordinates in place of the centroid, we need to
+    # keep track of the mouse
+    if use_mouse:
+        mouse = Mouse()
+        cv2.setMouseCallback(mask_window, mouse.update_coords)
+
     # ------------ Continuous Operation ------------
 
     # default pencil setup
     draw_color = (0,0,255) # starts off red
     draw_thickness = 5
-    old_centroid_coords = (None,None)
+    old_pencil_coords = (None,None)
 
     while True:
 
@@ -177,12 +239,12 @@ def main():
         cv2.imshow(canvas_window, canvas)
 
         # calculate centroid of the largest color blob and show the mask being applied
-        centroid_coords, detected_centroid = get_centroid(mask)
-        cv2.imshow(mask_window, detected_centroid)
+        pencil_coords, detected_pencil = get_centroid_position(mask) if not use_mouse else get_mouse_position(mouse)
+        cv2.imshow(mask_window, detected_pencil)
 
         # update the canvas and the pencil coordinates according to the most recent drawing movement
-        canvas = draw(canvas, old_centroid_coords, centroid_coords, draw_color, draw_thickness)
-        old_centroid_coords = centroid_coords
+        canvas = draw(canvas, old_pencil_coords, pencil_coords, draw_color, draw_thickness, usp)
+        old_pencil_coords = pencil_coords
 
 
         # wait for a command
@@ -212,7 +274,7 @@ def main():
         elif pressedKey==ord('c'):
             canvas = np.zeros([720,1280,3],dtype=np.uint8)
             canvas[:] = 255
-            old_centroid_coords = (None,None)
+            old_pencil_coords = (None,None)
 
         # save image
         elif pressedKey==ord('w'):
