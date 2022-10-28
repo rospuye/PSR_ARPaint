@@ -16,15 +16,21 @@ class Mouse:
     """
     class 'Mouse': this class is only ever instantiated if we run the program with the -m flag, meaning
                 we wish to use the mouse pointer instead of the color centroid as a pencil; in that case,
-                the instantiation of Mouse keeps track of the coordinates of the mouse pointer, thus
-                avoiding the use of global variables
+                the instantiation of Mouse keeps track of the coordinates of the mouse pointer, as well as
+                if we're pressing the left mouse button or not, thus avoiding the use of global variables
     """
 
     def __init__(self):
         self.coords = (None,None)
+        self.pressed = False
 
-    def update_coords(self,event,x,y,flags,param):
+    def update_mouse(self,event,x,y,flags,param):
         self.coords = (x,y)
+
+        if event == cv2.EVENT_LBUTTONDOWN:
+            self.pressed = True
+        elif event == cv2.EVENT_LBUTTONUP:
+            self.pressed = False
 
 class Dot:
     """
@@ -48,6 +54,7 @@ class Line:
         self.coords = coords
         self.thickness = thickness
         self.color = color
+
 
 def get_centroid_position(mask):
     """
@@ -105,6 +112,7 @@ def get_centroid_position(mask):
         cY = None
         
     return (cX,cY), final_image
+
 
 def get_mouse_position(mouse):
     """
@@ -169,6 +177,7 @@ def new_draw_move(old_coords, coords, color, thickness, usp):
             return Line(old_coords,coords,thickness,color)
     return None
 
+
 def redraw_on_frame(image, draw_moves):
     """
     function redraw_on_frame: re-draws all the user's move history on the newly capture camera frame
@@ -186,6 +195,7 @@ def redraw_on_frame(image, draw_moves):
         elif type(move) is Line:
             cv2.line(image, (move.old_coords[0], move.old_coords[1]), (move.coords[0], move.coords[1]), move.color, move.thickness)
     return image
+
 
 def main():
     """
@@ -251,7 +261,9 @@ def main():
     # keep track of the mouse
     if use_mouse:
         mouse = Mouse()
-        cv2.setMouseCallback(mask_window, mouse.update_coords)
+        cv2.setMouseCallback(mask_window, mouse.update_mouse)
+
+
 
     # ------------ Continuous Operation ------------
 
@@ -271,8 +283,15 @@ def main():
         pencil_coords, detected_pencil = get_centroid_position(mask) if not use_mouse else get_mouse_position(mouse)
         cv2.imshow(mask_window, detected_pencil)
 
-        # update the frame and the pencil coordinates according to the most recent drawing movement
-        draw_moves.append(new_draw_move(old_pencil_coords, pencil_coords, draw_color, draw_thickness, usp))
+        # update the history of draw moves
+        # we only add the most recent move if:
+        #   (1) we're on mouse mode AND the mouse is pressed
+        #       OR
+        #   (2) we're not on mouse mode
+        if (use_mouse and mouse.pressed) or (not use_mouse):
+            draw_moves.append(new_draw_move(old_pencil_coords, pencil_coords, draw_color, draw_thickness, usp))
+
+        # redraw history of moves on new frame
         frame = redraw_on_frame(frame,draw_moves)
         old_pencil_coords = pencil_coords
 
