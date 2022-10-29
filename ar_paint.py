@@ -1,200 +1,22 @@
 import cv2
-import numpy as np
+# import numpy as np
 
 import argparse
 import json
-from functools import partial
+# from functools import partial
 
 from os import path
 import sys
 from datetime import datetime
 
-from color_segmenter import apply_mask
+from classes import *
+from aux_functions import \
+    get_centroid_position, \
+    get_mouse_position, \
+    new_draw_move, \
+    redraw_on_frame, \
+    apply_mask
 
-
-class Mouse:
-    """
-    class 'Mouse': this class is only ever instantiated if we run the program with the -m flag, meaning
-                we wish to use the mouse pointer instead of the color centroid as a pencil; in that case,
-                the instantiation of Mouse keeps track of the coordinates of the mouse pointer, as well as
-                if we're pressing the left mouse button or not, thus avoiding the use of global variables
-    """
-
-    def __init__(self):
-        self.coords = (None,None)
-        self.pressed = False
-
-    def update_mouse(self,event,x,y,flags,param):
-        self.coords = (x,y)
-
-        if event == cv2.EVENT_LBUTTONDOWN:
-            self.pressed = True
-        elif event == cv2.EVENT_LBUTTONUP:
-            self.pressed = False
-
-class Dot:
-    """
-    class 'Dot': represents a drawn dot on the canvas; this class allows us to instantiate dots drawn on
-                the canvas (camera frame) so that they might be redrawn on each new frame
-    """
-
-    def __init__(self, coords, thickness, color):
-        self.coords = coords
-        self.thickness = thickness
-        self.color = color
-
-class Line:
-    """
-    class 'Line': represents a drawn line on the canvas; this class allows us to instantiate lines drawn on
-                the canvas (camera frame) so that they might be redrawn on each new frame
-    """
-
-    def __init__(self, old_coords, coords, thickness, color):
-        self.old_coords = old_coords
-        self.coords = coords
-        self.thickness = thickness
-        self.color = color
-
-
-def get_centroid_position(mask):
-    """
-    function 'get_centroid_position': analyses the result of a mask being applied to an image (the result being
-                            a binary image) in order to find its largest color segment, as well as its
-                            centroid
-        INPUT:
-            - mask: an image where a color segmentation mask has been applied; it is a BINARY
-                    image where the white pixels represent that a given color has been detected
-                    for that pixel in the original image, whereas black pixels signify the
-                    absense of that same color
-        OUTPUT:
-            - (cX, cY): the X and Y coordinates (respectively) of the centroid of the biggest
-                        object (white blob) in the 'mask' input
-            - final_image: NOT a binary image; this is an RGB image with all the detected objects in the
-                        'mask' input; the biggest object is colored green, whereas all the other ones
-                        remain white; a red cross is placed in the position of the centroid
-    """
-
-    # find all contours (objects)
-    cnts, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-    
-    # if we detect objects, let's find the biggest one, make it green and calculate the centroid
-    if cnts:
-
-        # find the biggest object
-        cnt = max(cnts, key=cv2.contourArea)
-
-        # make it green (but still show other objects in white)
-        biggest_obj = np.zeros(mask.shape, np.uint8)
-        cv2.drawContours(biggest_obj, [cnt], -1, 255, cv2.FILLED)
-        biggest_obj = cv2.bitwise_and(mask, biggest_obj) # mask-like image with only the biggest object
-        all_other_objs = cv2.bitwise_xor(mask, biggest_obj) # all other objects except the biggest one
-        
-        b = all_other_objs
-        g = mask
-        r = all_other_objs
-
-        final_image = cv2.merge((b, g, r))
-
-        # calculate centroid coordinates
-        M = cv2.moments(cnt)
-        cX = int(M["m10"] / M["m00"]) if (M["m00"]!=0) else None
-        cY = int(M["m01"] / M["m00"]) if (M["m00"]!=0) else None
-
-        # draw small red cross to indicate the centroid point
-        if cX: # it's enough to check either cX or cY, if one is None then both are None
-            cv2.line(final_image, (cX-8, cY-8), (cX+8, cY+8), (0, 0, 255), 5)
-            cv2.line(final_image, (cX+8, cY-8), (cX-8, cY+8), (0, 0, 255), 5)
-
-    # if we don't detect any objects, we just show the mask as it is
-    else:
-        final_image = cv2.merge((mask, mask, mask))
-        cX = None
-        cY = None
-        
-    return (cX,cY), final_image
-
-
-def get_mouse_position(mouse):
-    """
-    function 'get_mouse_position': if we are running the script with the -m flag, it returns the mouse
-                                coordinates on a black screen
-        INPUT:
-            - mouse: the instantiation of the Mouse class, which keeps the mouse pointer coordinate
-                    information
-        OUTPUT:
-            - (cX, cY): the X and Y coordinates (respectively) of the mouse pointer
-            - final_image: a black screen where a red cross is placed in the position of the mouse
-                        coordinates
-    """
-
-    final_image = np.zeros([720,1280,3],dtype=np.uint8) # black screen
-    cX = mouse.coords[0]
-    cY = mouse.coords[1]
-    # drawing the red cross
-    if cX:
-        cv2.line(final_image, (cX-8, cY-8), (cX+8, cY+8), (0, 0, 255), 5)
-        cv2.line(final_image, (cX+8, cY-8), (cX-8, cY+8), (0, 0, 255), 5)
-    return (cX,cY), final_image
-
-
-def new_draw_move(old_coords, coords, color, thickness, usp):
-    """
-    function new_draw_move: returns the class instantiation of a new drawing move performed by
-                            the end-user
-        INPUT:
-            - old_coords: last position of the pencil
-            - coords:     new position of the pencil
-            - color:      pencil color
-            - thickness:  pencil thickness
-            - usp:        boolean that indicates whether or not we're performing shake prevention
-        OUTPUT:
-            - [return value]: there are three distinct cases for what the return value could
-                            be
-                            (1) if the new pencil coordinates are (None,None), then we do
-                                not draw on the image, and thus return None
-                            (2) if the new pencil coordinates are DIFFERENT from (None, None)
-                                but we do not have any previous coordinates (meaning that
-                                old_coords is (None,None)), we simply return a Dot object; this
-                                scenario also happens if the program is ran with the shake detection
-                                option activated and the difference between old_coords and coords
-                                surpasses a certain threshold
-                            (3) if we have both the previous coordinates and the new ones, we
-                                return a Line object going from the previous to the new coordinates
-    """
-
-    if coords!=(None,None):
-        # difference along the x and y axes between the pencil's last and current position;
-        # if either of these differences is too big and we ran this program with the -usp flag,
-        # shake detection will be activated
-        diffX = abs(old_coords[0] - coords[0]) if old_coords[0] else None
-        diffY = abs(old_coords[1] - coords[1]) if old_coords[1] else None
-
-        # TODO: potentially need to adjust the threshold of the shake detection
-        if old_coords==(None,None) or \
-            (usp and (diffX>50 or diffY>50)): # this line performs shake detection
-            return Dot(coords,thickness,color)
-        else:
-            return Line(old_coords,coords,thickness,color)
-    return None
-
-
-def redraw_on_frame(image, draw_moves):
-    """
-    function redraw_on_frame: re-draws all the user's move history on the newly capture camera frame
-        INPUT:
-            - image:      canvas on which to draw (that being the new camera frame)
-            - draw_moves: history of drawing moves performed by the user
-        OUTPUT:
-            - image: altered canvas, already with the drawings on it
-    """
-
-    for move in draw_moves:
-        # draw on image
-        if type(move) is Dot:
-            cv2.circle(image, move.coords, move.thickness, move.color, -1)
-        elif type(move) is Line:
-            cv2.line(image, (move.old_coords[0], move.old_coords[1]), (move.coords[0], move.coords[1]), move.color, move.thickness)
-    return image
 
 
 def main():
@@ -263,6 +85,16 @@ def main():
         mouse = Mouse()
         cv2.setMouseCallback(mask_window, mouse.update_mouse)
 
+    # according to the pressing of the 's', 'e' or 'o' keys, this variable keeps up
+    # with which mode we're in (which figure the user wants to draw);
+    # if the user doesn't want to draw any figure but is simply in normal drawing
+    # mode, this variable is None
+    figure_mode = None
+
+    # this variable keeps track of the current square or ellipse preview, should
+    # the user be in the middle of drawing one;
+    # otherwise, it's None
+    figure_cache = None
 
 
     # ------------ Continuous Operation ------------
@@ -289,7 +121,41 @@ def main():
         #       OR
         #   (2) we're not on mouse mode
         if (use_mouse and mouse.pressed) or (not use_mouse):
-            draw_moves.append(new_draw_move(old_pencil_coords, pencil_coords, draw_color, draw_thickness, usp))
+
+            # free drawing mode
+            if not figure_mode:
+                draw_moves.append(new_draw_move(old_pencil_coords, pencil_coords, draw_color, draw_thickness, usp))
+
+            # figure mode and we're detecting the pencil
+            elif pencil_coords!=(None,None):
+
+                # if we already have a figure in cache, its origin remains the same;
+                # if not, its origin is set as the current pencil coordinates
+                # note: the origin of a figure is it's top-left corner for a rectangle/square or
+                # an ellipse, and its center for a circle
+                origin = figure_cache.origin if figure_cache else pencil_coords
+
+                # update the figure cache with the figure's new positioning
+                if figure_mode=='square':
+                    figure_cache = Square(origin, pencil_coords, draw_color, draw_thickness)
+                elif figure_mode=='ellipse':
+                    figure_cache = Ellipse(origin, pencil_coords, draw_color, draw_thickness)
+                elif figure_mode=='circle':
+                    figure_cache = Circle(origin, pencil_coords, draw_color, draw_thickness)
+
+                # update draw_moves with the new figure in cache
+                draw_moves[-1] = figure_cache
+
+            # figure mode but we can't detect the pencil
+            elif pencil_coords==(None,None):
+                # if there's any figure in the cache, we make it grey;
+                # this signals to the user that the current figure is impossible to edit at the moment, but that
+                # it will continue the positioning process once the pencil coordinates are detected once more;
+                # if the user purposefully chooses to hide the pencil pointer and deactivate figure mode while
+                # in this state, that allows them to give up on drawing this figure
+                if figure_cache:
+                    figure_cache.color = (190,190,190)
+                    draw_moves[-1] = figure_cache
 
         # redraw history of moves on new frame
         frame = redraw_on_frame(frame,draw_moves)
@@ -332,6 +198,35 @@ def main():
             formatted_date = today.strftime("%a_%b_%d_%H:%M:%S")
             image_name = 'drawing_' + formatted_date + '.png'
             cv2.imwrite(image_name, frame)
+
+        # draw figure
+        elif pressedKey==ord('s') or pressedKey==ord('e') or pressedKey==ord('o'):
+
+            # determine which figure it is
+            figure = 'square' if pressedKey==ord('s') else ('ellipse' if pressedKey==ord('e') else 'circle')
+
+            # if we were previously drawing another type of figure, we clean the figure cache and remove
+            # the previous figure from draw_moves; this code will also execute if we were previously
+            # free drawing, but it doesn't make a difference
+            if figure_mode!=figure:
+                figure_cache = None
+                draw_moves = draw_moves[:-1]
+
+            # if we were already in the correct figure's drawing mode for the pressed key, we set figure_mode
+            # to None because it means we're pressing the figure's key for a second time (a.k.a. the user is
+            # finished positioning it); otherwise, we set the mode to the inteded figure for the detected key
+            # press
+            figure_mode = figure if (figure_mode!=figure) else None
+
+            # if we just finished positioning a figure, we clean the cache
+            if figure_mode != figure:
+
+                # if we have a grey figure and the figure mode is deactivated, it means the user gave up on
+                # drawing that figure, and thus we also remove it from the draw_moves list
+                if figure_cache and figure_cache.color == (190,190,190):
+                    draw_moves = draw_moves[:-1]
+
+                figure_cache = None
 
 
 

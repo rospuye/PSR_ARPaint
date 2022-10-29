@@ -3,44 +3,13 @@ from functools import partial
 import json
 from os import path
 
+from aux_functions import update_range_dict, apply_mask
+
 """
 TODO:
 - figure out how to fix the bug from clickling the (x) button to leave the canvas
 """
 
-def update_range_dict(val,ranges,color,bound):
-    """
-    function update_range_dict: updates the dictionary that holds the valid ranges of each
-                                of the 3 color channels for color segmentation with new
-                                trackbar values
-        INPUT:
-            - val: new trackbar value, resulting from end-user's manipulation of the
-                interface's trackbars
-            - ranges: the dictionary holding the valid RBG ranges
-            - color: the color channel that needs to be altered (so, either 'R', 'G' or 'B')
-            - bound: the bound that needs to be altered (so, either 'min' or 'max')
-    """
-    ranges[color][bound] = val
-
-def apply_mask(image, ranges):
-    """
-    function apply_mask: applies a color segmentation mask to an image
-        INPUT:
-            - image: original image we want to apply the mask to
-            - ranges: this is basically the mask itself, except instead of being a binary image with which
-                    we would perform a logical operation to the original image, it is a dictionary
-                    indicating the valid ranges of values for each of the color channels - R, G and B
-        OUTPUT:
-            - [return value]: a binary image where the white pixels represent pixels in the original image
-                            that stood within the valid ranges for all three color channels, whereas black
-                            pixels represent pixels in the original image where at least one of the three
-                            ranges was violated; this tells us which pixels in the original image were within
-                            the valid color range we wish to detect
-    """
-
-    lows = (ranges['B']['min'], ranges['G']['min'], ranges['R']['min'])
-    highs = (ranges['B']['max'], ranges['G']['max'], ranges['R']['max'])
-    return cv2.inRange(image, lows, highs)
 
 
 def main():
