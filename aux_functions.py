@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 from classes import Circle, Dot, Ellipse, Line, Square
+from random import randint
 
 # This file contains auxiliary functions used in the color_segmenter.py and ar_paint.py scripts.
 
@@ -174,6 +175,59 @@ def redraw_on_frame(image, draw_moves):
             cv2.circle(image, move.origin, move.radius, move.color, move.thickness)
     return image
 
+
+def getgrid(image):
+    """
+    function getgrid: compute the grid (division into zones) according to the image size, as well as the total number
+                    of distinct coloring zones
+        INPUT:
+            - image: original image, we will use its dimensions to figure out the coloring grid
+        OUTPUT:
+            - grid: binary image indicating where the grid will be laid on the original image
+            - [len(contours)]: number of different coloring zones
+    """
+
+    h,w,_ = image.shape
+    grid = np.zeros([h,w],dtype=np.uint8)
+
+    grid[h-1,:] = 255
+    grid[:,w-1] = 255
+
+    for y in range(0,h,int(h/3)):
+        grid[y,:] = 255
+    for x in range(0,w,int(w/4)):
+        grid[:,x] = 255
+
+    grid = cv2.bitwise_not(grid)
+
+    contours, _ = cv2.findContours(grid, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+
+    return grid, len(contours)
+
+
+def findcontours(original, grid, numbers):
+    """
+    function findcontours: apply the grid to the image and distribute coloring numbers among the different
+                        coloring zones
+        INPUT:
+            - original: original image where we will lay the grid
+            - grid: grid to be applied
+            - numbers: array of random numbers to be distributed among the zones
+        OUTPUT:
+            - [return value]: original image with grid and coloring numbers laid out
+    """
+
+    contours, _ = cv2.findContours(grid, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    color = (255,255,255)
+
+    for i in range(len(contours)):
+        c = contours[i]
+
+        x,y,w,h = cv2.boundingRect(c)
+        cX = int(x + w/2)
+        cY = int(y + h/2)
+        cv2.putText(original, str(numbers[i]), (cX, cY), cv2.FONT_HERSHEY_SIMPLEX, 0.9, color, 2)
+    return cv2.drawContours(original, contours, -1, color, 3)
 
 # -----------------------------------------------------
 #                         BOTH

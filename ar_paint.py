@@ -1,3 +1,4 @@
+from random import randint
 import cv2
 # import numpy as np
 
@@ -15,7 +16,9 @@ from aux_functions import \
     get_mouse_position, \
     new_draw_move, \
     redraw_on_frame, \
-    apply_mask
+    apply_mask, \
+    getgrid, \
+    findcontours
 
 
 
@@ -96,6 +99,9 @@ def main():
     # otherwise, it's None
     figure_cache = None
 
+    # this variable tells if we're currently in the mode where we color zones according
+    # to their number or not; let's call this 'coloring mode'
+    color_zones = False
 
     # ------------ Continuous Operation ------------
 
@@ -110,6 +116,9 @@ def main():
         _, frame = capture.read()
         mask = apply_mask(frame, ranges)
 
+        # if we're in coloring mode, display grid and numbers
+        if color_zones:
+            frame = findcontours(frame,grid,color_numbers)
 
         # calculate centroid of the largest color blob and show the mask being applied
         pencil_coords, detected_pencil = get_centroid_position(mask) if not use_mouse else get_mouse_position(mouse)
@@ -227,6 +236,29 @@ def main():
                     draw_moves = draw_moves[:-1]
 
                 figure_cache = None
+
+        # coloring mode (it is activated or deactivated by pressing the space bar)
+        elif pressedKey==ord(' '):
+
+            # if we're activating coloring mode
+            if not color_zones:
+
+                # clear canvas
+                draw_moves = []
+                old_pencil_coords = (None,None)
+
+                # compute the grid (division into zones) and the total number of distinct coloring zones 
+                grid, num_zones = getgrid(frame)
+
+                # create array of random numbers between 1 and 3, with as many numbers as there are
+                # coloring zones; these will later be distributed among the zones; the numbers go from 1
+                # to 3 because we can only use three colors (red, blue and green)
+                color_numbers = []
+                for _ in range(num_zones):
+                    color_numbers.append(randint(1,3)) # we have three colors
+
+            # update the mode indicator
+            color_zones = not color_zones
 
 
 
