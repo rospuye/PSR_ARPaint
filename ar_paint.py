@@ -18,7 +18,9 @@ from aux_functions import \
     redraw_on_frame, \
     apply_mask, \
     getgrid, \
-    findcontours
+    findcontours, \
+    colorswindow, \
+    calc_accuracy
 
 
 
@@ -116,9 +118,21 @@ def main():
         _, frame = capture.read()
         mask = apply_mask(frame, ranges)
 
-        # if we're in coloring mode, display grid and numbers
+        # if we're in coloring mode
         if color_zones:
-            frame = findcontours(frame,grid,color_numbers)
+
+            # display the grid and numbers
+            frame = findcontours(frame, zones, color_numbers)
+
+            # setting up the window the coloring accuracy
+            color_window = 'Color map'
+            cv2.namedWindow(color_window, cv2.WINDOW_NORMAL)
+            cv2.resizeWindow(color_window, (300,350))
+            cv2.moveWindow(color_window, 800, 600)
+
+            # show the colors to be used
+            stats = colorswindow(numbers_to_colors)
+            cv2.imshow(color_window, stats)
 
         # calculate centroid of the largest color blob and show the mask being applied
         pencil_coords, detected_pencil = get_centroid_position(mask) if not use_mouse else get_mouse_position(mouse)
@@ -247,8 +261,10 @@ def main():
                 draw_moves = []
                 old_pencil_coords = (None,None)
 
-                # compute the grid (division into zones) and the total number of distinct coloring zones 
-                grid, num_zones = getgrid(frame)
+                # compute the grid (division into zones) and correlation between the numbers are the 
+                # colors they represent
+                zones, numbers_to_colors = getgrid(frame)
+                num_zones = len(zones) # number of coloring zones
 
                 # create array of random numbers between 1 and 3, with as many numbers as there are
                 # coloring zones; these will later be distributed among the zones; the numbers go from 1
@@ -256,6 +272,11 @@ def main():
                 color_numbers = []
                 for _ in range(num_zones):
                     color_numbers.append(randint(1,3)) # we have three colors
+
+            else:
+                accuracy = calc_accuracy(frame, zones, color_numbers, numbers_to_colors)
+                stats = colorswindow(numbers_to_colors, accuracy)
+                cv2.imshow(color_window, stats)
 
             # update the mode indicator
             color_zones = not color_zones

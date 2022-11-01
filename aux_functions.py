@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 from classes import Circle, Dot, Ellipse, Line, Square
-from random import randint
+from random import randint, shuffle
 
 # This file contains auxiliary functions used in the color_segmenter.py and ar_paint.py scripts.
 
@@ -176,19 +176,23 @@ def redraw_on_frame(image, draw_moves):
     return image
 
 
+
 def getgrid(image):
     """
-    function getgrid: compute the grid (division into zones) according to the image size, as well as the total number
-                    of distinct coloring zones
+    function getgrid: compute the grid (division into zones) according to the image size, as well as the correlation
+                    between the numbers are the colors they represent
         INPUT:
             - image: original image, we will use its dimensions to figure out the coloring grid
         OUTPUT:
-            - grid: binary image indicating where the grid will be laid on the original image
-            - [len(contours)]: number of different coloring zones
+            - contours: the coloring zones the image is divided into
+            - numbers_to_colors: a list of colors; the index i of a color in this list means that, in the zone
+                                coloring mode, that color corresponds to zones with the number i+1
     """
 
     h,w,_ = image.shape
     grid = np.zeros([h,w],dtype=np.uint8)
+
+    # coloring zones are a grid
 
     grid[h-1,:] = 255
     grid[:,w-1] = 255
@@ -200,24 +204,28 @@ def getgrid(image):
 
     grid = cv2.bitwise_not(grid)
 
+    # contours of each zone
     contours, _ = cv2.findContours(grid, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
-    return grid, len(contours)
+    numbers_to_colors = [(0,0,255), (0,255,0), (255,0,0)]
+    shuffle(numbers_to_colors)
+
+    return contours, numbers_to_colors
 
 
-def findcontours(original, grid, numbers):
+def findcontours(original, contours, numbers):
     """
     function findcontours: apply the grid to the image and distribute coloring numbers among the different
                         coloring zones
         INPUT:
             - original: original image where we will lay the grid
-            - grid: grid to be applied
+            - contours: grid to be applied
             - numbers: array of random numbers to be distributed among the zones
         OUTPUT:
             - [return value]: original image with grid and coloring numbers laid out
     """
 
-    contours, _ = cv2.findContours(grid, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    # grid and numbers will be white
     color = (255,255,255)
 
     for i in range(len(contours)):
@@ -226,8 +234,80 @@ def findcontours(original, grid, numbers):
         x,y,w,h = cv2.boundingRect(c)
         cX = int(x + w/2)
         cY = int(y + h/2)
+
+        # write the numbers in each zone
         cv2.putText(original, str(numbers[i]), (cX, cY), cv2.FONT_HERSHEY_SIMPLEX, 0.9, color, 2)
+
+    # draw the contours and return the result
     return cv2.drawContours(original, contours, -1, color, 3)
+
+
+def colorswindow(numbers_to_colors, accuracy=None):
+    """
+    function colorswindow: works out what to display on the small colors window for the zone coloring mode,
+                        where it informs the user which number corresponds to which color, and eventually the
+                        accuracy of the last coloring
+        INPUT:
+            - numbers_to_colors: a list of colors; the index i of a color in this list means that, in the zone
+                                coloring mode, that color corresponds to zones with the number i+1
+            - accuracy: the accuracy of the last coloring, to be displayed on the small colors window
+        OUTPUT:
+            - bg: final image to be displayed on the colors window
+    """
+
+    bg = np.zeros([300,350,3],dtype=np.uint8)
+
+    for i in range(3):
+        color = 'red' if numbers_to_colors[i]==(0,0,255) else ('green' if numbers_to_colors[i]==(0,255,0) else 'blue')
+        cv2.putText(bg, str(i+1) + ' - ' + color, (50, 50+50*i), cv2.FONT_HERSHEY_SIMPLEX, 0.9, numbers_to_colors[i], 2)
+
+    if accuracy!=None:
+        cv2.putText(bg, 'Accuracy: ' + str(accuracy) + '%', (50, 250), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255,255,255), 2)
+    
+    return bg
+
+
+def calc_accuracy(image, contours, zone_numbers, numbers_to_colors):
+    """
+    function calc_accuracy: calculates the accuracy of a given coloring in the zones coloring mode
+        INPUT:
+            - image: the painted frame which we want to examine for the accuracy of its painting
+            - contours: the zones into which the initial frame was divided for coloring
+            - zone_numbers: the numbers randomly attributed to each zone
+            - numbers_to_colors: a list of colors; the index i of a color in this list means that, in the zone
+                                coloring mode, that color corresponds to zones with the number i+1
+        OUTPUT:
+            - [return value]: final accuracy value, rounded to be an int
+    """
+
+    h,w,_ = image.shape
+    total_pixels = h*w
+
+    right_pixels = 0 # this will hold the number of pixels with the correct color
+    # for each zone...
+    for i in range(len(contours)):
+
+        c = contours[i]                             # the zone
+        zone_number = zone_numbers[i]               # the zone number
+        color = numbers_to_colors[zone_number-1]    # the zone color
+
+        # corners of this zone (zones are always rectangles)
+        minX = c[0][0][0]
+        maxX = c[2][0][0]
+        minY = c[0][0][1]
+        maxY = c[1][0][1]
+
+        _,_,depth = image.shape
+
+        # evaluate each pixel
+        for pixel_row in image[minY:maxY, minX:maxX, 0:depth]:
+            for pixel in pixel_row:
+                pixel = (pixel[0], pixel[1], pixel[2])
+                right_pixels += 1 if pixel==color else 0
+
+    # compute accuracy
+    return int((right_pixels/total_pixels)*100)
+
 
 # -----------------------------------------------------
 #                         BOTH

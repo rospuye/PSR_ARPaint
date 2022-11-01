@@ -5,12 +5,6 @@ from os import path
 
 from aux_functions import update_range_dict, apply_mask
 
-"""
-TODO:
-- figure out how to fix the bug from clickling the (x) button to leave the canvas
-"""
-
-
 
 def main():
     """
